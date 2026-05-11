@@ -1,0 +1,135 @@
+# .cursorrules — Gentleborn Project Rules
+
+# CRITICAL: ALWAYS read gentleborn/PROJECT_CONTEXT.md FIRST before answering any question.
+# That file contains the full project history, founder context, technical architecture,
+# healthcare compliance rules, and strategic decisions. Do not answer questions about
+# Gentleborn without first reading that file.
+
+## Project Quick Reference
+
+Gentleborn is a HIPAA-compliant telehealth platform connecting mothers with community-based
+maternal care providers (midwives, doulas, lactation consultants). We handle credentialing,
+insurance billing, and scheduling on the providers' behalf.
+
+Founder: Rahul Aakaram (Lead Software Engineer, healthcare + fintech background)
+Legal Entity: Gentleborn, Inc. (Delaware C-Corp)
+EIN: 42-2407398
+Domain: gentleborn.com
+
+## Stack (Locked Decisions — Do Not Change Without Discussion)
+
+- Next.js 15 with App Router and TypeScript (strict mode)
+- Supabase (PostgreSQL + Auth + Storage) on HIPAA tier
+- Mastra for agent orchestration
+- Claude (Anthropic) as primary AI reasoning engine
+- Twilio for HIPAA-compliant video and messaging
+- Stedi (primary clearinghouse) — API-first 270/271, 837P, 835
+- Availity (secondary, conditional) — only when a payer/MCO requires Availity-routed transactions or portal access
+- CAQH ProView for Groups — credentialing data hub
+- NPI Registry (NPPES) — provider verification at intake
+- Stripe Connect for provider payouts
+- Tailwind CSS + shadcn/ui
+- Vercel Pro (HIPAA tier) for hosting
+
+## Coding Conventions
+
+- TypeScript strict mode, no `any` types (use `unknown` if type is truly unknown)
+- Server Actions for mutations, never expose database directly to client
+- All PHI-handling code must be in server-only modules
+- Database queries always use parameterized statements
+- Errors caught and logged (never silently swallowed)
+- All API responses use consistent format: { data: T | null, error: { message, code } | null }
+- Async/await over promise chains
+- Functional components with hooks, no class components
+- Use `cn()` utility for conditional Tailwind classes
+- Component files match component name
+- Comments only when intent isn't obvious from the code
+
+## File Structure
+
+```
+app/                # Next.js App Router routes
+agents/             # Mastra AI agents
+lib/                # Shared utilities and integrations
+components/         # React components (ui/ for shadcn)
+workflows/          # Mastra workflows
+types/              # TypeScript types
+supabase/           # Database migrations and config
+docs/               # Project documentation (see also gentleborn/PROJECT_CONTEXT.md)
+```
+
+## HIPAA Requirements (Critical, Non-Negotiable)
+
+- Never log PHI in console, error tracking, or analytics
+- All database operations on PHI must use Supabase Row Level Security (RLS) policies
+- All file uploads to encrypted Supabase Storage with signed URLs
+- All third-party services handling PHI must have signed Business Associate Agreement (BAA)
+- Audit log every PHI access (who, what, when)
+- No PHI in URL parameters, query strings, or browser localStorage
+- Encrypted at rest and in transit for all PHI
+
+## Healthcare Domain Rules
+
+Provider data flows through 6 stages:
+1. Onboarding (Gentleborn intake)
+2. CAQH credentialing
+3. State Medicaid enrollment (Virginia PRSS)
+4. MCO contracting (5 MCOs in Virginia)
+5. EDI Trading Partner setup (organization-level, once)
+6. Claim submission and payment
+
+Every claim needs:
+- Provider NPI Type 1 (individual)
+- Gentleborn NPI Type 2 (billing entity)
+- 12-digit Virginia Medicaid Member ID
+- Date of service, CPT/HCPCS code with modifier, ICD-10 diagnosis
+- Place of service code (02=telehealth, 11=office, 12=home)
+
+Eligibility (270/271) checks before every appointment via the clearinghouse adapter (Stedi by default).
+Claims (837P) submitted via the clearinghouse adapter to DMAS or the correct MCO.
+Payments (835 ERA) post back through the clearinghouse adapter.
+
+## AI Safety Rules (Critical for Maternal Care)
+
+- AI never makes clinical recommendations independently
+- Validated clinical algorithms (NICE preeclampsia, Edinburgh PPD, preterm birth) handle risk scoring
+- Raw LLM output is never used for clinical assessment
+- Human provider must review and sign all clinical documentation
+- Mother-facing AI must escalate clinical concerns to provider, never advise
+- Birth support is never AI-mediated — only human providers handle labor and delivery
+- AI prompts include explicit safety boundaries and escalation triggers
+
+## Communication Style for AI Interactions
+
+- Direct, honest, human
+- No corporate language
+- No em dashes (use periods or commas instead)
+- No filler words
+- Push back when something is wrong
+- Bring focus when scope creeps
+- When founder seems overwhelmed, return to one concrete action
+
+## When in Doubt
+
+- Choose speed over perfection
+- Choose simplicity over flexibility
+- Choose proven over novel
+- Choose human-readable over clever
+- Choose HIPAA-strict over convenient
+
+## Important Files to Reference
+
+- gentleborn/PROJECT_CONTEXT.md — Full project context (READ FIRST)
+- docs/ARCHITECTURE.md — Technical architecture details (if present)
+- /supabase/migrations/ — Database schema
+- /agents/ — All Mastra agent implementations
+- README.md — Quick project overview
+
+## When Starting a New Task
+
+1. Read gentleborn/PROJECT_CONTEXT.md if not already in context
+2. Understand which of the 7 agents this task relates to (or if it's infrastructure)
+3. Check if HIPAA compliance is touched (it usually is)
+4. Verify any external services involved have BAAs
+5. Plan the change before making it
+6. Generate code that matches existing patterns in the codebase
