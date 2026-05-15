@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gentleborn
 
-## Getting Started
+HIPAA-compliant telehealth platform connecting mothers with community-based
+maternal care providers. See `PROJECT_CONTEXT.md` for the full picture.
 
-First, run the development server:
+## Quick start
 
 ```bash
+# 1. Install deps
+npm install
+
+# 2. Set up env
+cp .env.example .env.local
+# Edit .env.local. At minimum, set:
+#   SUPABASE_SERVICE_ROLE_KEY (from Supabase dashboard > Settings > API)
+#   GENTLEBORN_PHI_KEY        (generate: `openssl rand -hex 32`)
+#   STEDI_API_KEY             (from Stedi dashboard; sandbox is fine for Day 1-7)
+
+# 3. Run tests (no live DB needed)
+npm test
+
+# 4. Run the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
+
+# 5. Run E2E (requires dev server)
+npm run test:e2e
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Architecture
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+src/
+  app/                    # Next.js App Router
+  lib/
+    crypto/               # AES-256-GCM (Day 1-7) → Vault (post-BAA)
+    db/                   # Supabase service-role client. SERVER ONLY.
+    phi.ts                # Single PHI access boundary. Audit-logged.
+    nppes/                # NPI lookup (free public API)
+    stedi/                # X12 270/837P client
+supabase/
+  migrations/             # Mirror of live schema (single source of truth)
+tests/
+  e2e/                    # Playwright
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### PHI rules (non-negotiable)
 
-## Learn More
+- `src/lib/phi.ts` is the ONLY module that reads or writes patient data.
+  ESLint enforces this via `no-restricted-imports`.
+- Every PHI read/write produces an `audit_log` row.
+- PHI columns (`patients.*_ct`, `visits.soap_note_ct`) are AES-256-GCM
+  ciphertext on Day 1-7. Post-BAA: swap `src/lib/crypto/provider.ts`
+  to Supabase Vault. Column types do not change.
 
-To learn more about Next.js, take a look at the following resources:
+### Day 1-7 (synthetic data, free tier)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Supabase: `gentleborn-stack` (free tier).
+- Vercel: hobby/free.
+- Stedi: sandbox.
+- No real PHI may enter the system.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Post-BAA cutover checklist
 
-## Deploy on Vercel
+1. Upgrade Supabase to Team + HIPAA add-on.
+2. Replace `EnvKeyProvider` impl in `src/lib/crypto/provider.ts` with
+   `VaultProvider`. Existing ciphertext stays valid (version byte 0x01)
+   until migrated.
+3. Switch Stedi env vars from sandbox to production.
+4. Add provider-scoped RLS policies (currently default-deny, service-role
+   only).
+5. Wire patient consent flow + signed PDF storage.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+See `TODOS.md` for the structured deferred items.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Commands
+
+| Command            | What it does                              |
+|--------------------|-------------------------------------------|
+| `npm run dev`      | Next.js dev server                        |
+| `npm run build`    | Production build                          |
+| `npm run lint`     | ESLint (includes PHI boundary rule)       |
+| `npm run typecheck`| `tsc --noEmit`                            |
+| `npm test`         | Vitest (unit + integration)               |
+| `npm run test:e2e` | Playwright (against running dev server)   |
+
+## Live Supabase
+
+| Project         | Ref                       | Region    | Tier        |
+|-----------------|---------------------------|-----------|-------------|
+| gentleborn-stack| `trglagdeoihtnwmgrxie`    | us-west-2 | Free (Day 1-7) |
+
+Migrations live in `supabase/migrations/` and are applied via the Supabase
+MCP tool. Mirror only — never the source of truth for schema state. To
+verify: `mcp__supabase__list_tables` against the project ref.

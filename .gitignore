@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# gbrain worktree pin (machine-specific source ID; see ~/.claude/skills/gstack/sync-gbrain)
+.gbrain-source
 
 # vercel
 .vercel
