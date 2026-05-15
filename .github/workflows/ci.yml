@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: lint + typecheck + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: unit + integration tests
+        run: npm test
+        env:
+          # Deterministic test-only key (32 bytes hex). Never reused in any
+          # other environment. Encryption tests load this via vitest.setup.
+          GENTLEBORN_PHI_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+
+      - name: build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder-anon-key'
+          SUPABASE_SERVICE_ROLE_KEY: 'placeholder-service-key'
+          GENTLEBORN_PHI_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          STEDI_API_KEY: 'placeholder'
+          STEDI_BASE_URL: 'https://sandbox.stedi.com'
